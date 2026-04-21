@@ -199,7 +199,8 @@
   .task-check.checked::after { content: '✓'; color: #fff; font-size: 13px; font-weight: 700; }
 
   .task-body { flex: 1; min-width: 0; }
-  .task-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+  .task-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; cursor: pointer; }
+  .task-title:hover { color: var(--accent); }
   .task-desc { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; line-height: 1.5; }
   .task-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .meta-chip {
@@ -219,9 +220,10 @@
 
   .task-actions { display: flex; gap: 4px; margin-top: 10px; }
   .action-btn {
-    width: 30px; height: 30px; border-radius: 8px; background: var(--bg);
-    display: flex; align-items: center; justify-content: center; font-size: 15px;
+    width: 38px; height: 38px; border-radius: 8px; background: var(--bg);
+    display: flex; align-items: center; justify-content: center; font-size: 17px;
     color: var(--text-muted); transition: var(--transition);
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
   }
   .action-btn:hover.edit  { background: var(--accent-light); color: var(--accent); }
   .action-btn:hover.del   { background: var(--red-light); color: var(--red); }
@@ -397,6 +399,19 @@
   .spinner { width: 22px; height: 22px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* ── Notif Banner ── */
+  #notif-banner {
+    display: none; background: linear-gradient(135deg,#4f7cff,#a855f7);
+    color: #fff; padding: 12px 16px; border-radius: var(--radius);
+    margin-bottom: 16px; align-items: center; gap: 12px; font-size: 14px;
+  }
+  #notif-banner.show { display: flex; }
+  #notif-banner button {
+    margin-left: auto; background: #fff; color: var(--accent);
+    padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 700;
+    flex-shrink: 0;
+  }
+
   /* ── Voice FAB ── */
   .fab-voice {
     position: fixed; bottom: 24px; right: 90px; width: 56px; height: 56px;
@@ -472,6 +487,12 @@
 
 <!-- ════════════════ MAIN ════════════════ -->
 <main>
+  <!-- Notif Banner -->
+  <div id="notif-banner">
+    🔔 Activa las notificaciones para recibir recordatorios en tu celular y reloj
+    <button onclick="requestNotifPermission()">Activar</button>
+  </div>
+
   <!-- Greeting -->
   <div class="greeting-row">
     <div class="greeting">
@@ -797,6 +818,7 @@ async function onLogin(user) {
   await loadData();
   subscribeRealtime();
   checkMigrateBtn();
+  checkNotifBanner();
 }
 
 async function confirmLogout() {
@@ -1066,12 +1088,32 @@ async function fireReminder(task) {
   renderNotifPanel();
   toast('🔔 Recordatorio: ' + task.title);
 
-  if (Notification.permission === 'granted') {
-    new Notification('⏰ TaskFlow', { body: task.title, icon: '/icon.png' });
-  } else if (Notification.permission !== 'denied') {
-    Notification.requestPermission().then(p => {
-      if (p === 'granted') new Notification('⏰ TaskFlow', { body: task.title });
-    });
+  showPushNotification('⏰ Recordatorio TaskFlow', task.title);
+}
+
+function showPushNotification(title, body) {
+  if (Notification.permission !== 'granted') return;
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: 'NOTIFY', title, body, icon: '/icon.svg' });
+  } else {
+    new Notification(title, { body, icon: '/icon.svg' });
+  }
+}
+
+async function requestNotifPermission() {
+  const p = await Notification.requestPermission();
+  if (p === 'granted') {
+    document.getElementById('notif-banner').classList.remove('show');
+    toast('✅ Notificaciones activadas — recibirás recordatorios en tu celular y reloj');
+    new Notification('✅ TaskFlow activado', { body: 'Recibirás recordatorios aquí', icon: '/icon.svg' });
+  } else {
+    toast('⚠️ Notificaciones bloqueadas. Habilítalas desde Configuración del iPhone > Safari > TaskFlow');
+  }
+}
+
+function checkNotifBanner() {
+  if (Notification.permission === 'default') {
+    document.getElementById('notif-banner').classList.add('show');
   }
 }
 
@@ -1148,7 +1190,7 @@ function buildCard(t) {
     <div class="priority-bar p-${t.priority}"></div>
     <div class="task-check ${t.status==='hecho'?'checked':''}" onclick="toggleDone('${t.id}')"></div>
     <div class="task-body">
-      <div class="task-title">${esc(t.title)}</div>
+      <div class="task-title" onclick="openTaskModal('${t.id}')" title="Toca para editar">${esc(t.title)}</div>
       ${t.desc ? `<div class="task-desc">${esc(t.desc)}</div>` : ''}
       <div class="task-meta">
         ${dateInfo ? `<span class="meta-chip chip-date ${dateInfo.cls}">${dateInfo.label}</span>` : ''}
